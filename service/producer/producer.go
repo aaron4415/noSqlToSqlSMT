@@ -3,7 +3,6 @@ package producer
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl/aws_msk_iam_v2"
 )
@@ -24,7 +22,6 @@ type Producer struct {
 
 func NewProducer(brokers []string) *Producer {
 	cfg, _ := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion("ap-southeast-1"),
 		config.WithRetryer(func() aws.Retryer {
 			return retry.NewStandard(func(o *retry.StandardOptions) {
 				o.MaxAttempts = 10
@@ -32,10 +29,6 @@ func NewProducer(brokers []string) *Producer {
 			})
 		}),
 	)
-
-	stsClient := sts.NewFromConfig(cfg)
-	out, _ := stsClient.GetCallerIdentity(context.TODO(), nil)
-	fmt.Printf("Using credentials from: %s\n", *out.Arn)
 
 	// Create SASL mechanism.
 	mechanism := aws_msk_iam_v2.NewMechanism(cfg)
@@ -55,22 +48,30 @@ func NewProducer(brokers []string) *Producer {
 }
 
 func (p *Producer) ProduceBatch(ctx context.Context, topic string, messages []kafka.Message) error {
-	// dialer := &kafka.Dialer{
-	// 	Timeout:   90 * time.Second,
-	// 	DualStack: true,
-	// 	//SASLMechanism: p.mechanism,
-	// 	TLS: &tls.Config{},
-	// }
+	dialer := &kafka.Dialer{
+		Timeout:       90 * time.Second,
+		DualStack:     true,
+		SASLMechanism: p.mechanism,
+		TLS:           &tls.Config{},
+	}
 
 	writer := kafka.NewWriter(kafka.WriterConfig{
-		Brokers:  p.brokers,
-		Topic:    topic,
-		Balancer: &kafka.LeastBytes{},
-		//Dialer:       dialer,
+		Brokers:      p.brokers,
+		Topic:        topic,
+		Balancer:     &kafka.LeastBytes{},
+		Dialer:       dialer,
+		BatchTimeout: 100 * time.Millisecond,
+		BatchSize:    100,
+		BatchBytes:   1048576 * 5,
+		Async:        false,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		Logger:       kafka.LoggerFunc(log.Printf),
+		ErrorLogger:  kafka.LoggerFunc(log.Printf),
 	})
 	defer writer.Close()
 
-	attemptTimeout := 30 * time.Second
+	attemptTimeout := 90 * time.Second
 	maxRetries := 10
 
 	var writeErr error
@@ -98,17 +99,19 @@ func (p *Producer) ProduceBatch(ctx context.Context, topic string, messages []ka
 }
 
 func (p *Producer) createAndWriteTopic(ctx context.Context, topic string, messages []kafka.Message) error {
-	// sharedTransport := &kafka.Transport{
-	// 	//SASL: p.mechanism,
-	// 	TLS: &tls.Config{},
-	// }
+	sharedTransport := &kafka.Transport{
+		SASL: p.mechanism,
+		TLS: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
 
 	w := kafka.Writer{
 		Addr:                   kafka.TCP(p.brokers...),
 		Topic:                  topic,
 		AllowAutoTopicCreation: true,
 		Balancer:               &kafka.Hash{},
-		//Transport:              sharedTransport,
+		Transport:              sharedTransport,
 	}
 
 	retryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
