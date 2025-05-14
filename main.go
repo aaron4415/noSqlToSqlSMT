@@ -61,6 +61,7 @@ func init() {
 }
 
 func main() {
+	log.Printf("SMT Start running")
 	// Load .env
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
@@ -68,6 +69,18 @@ func main() {
 
 	brokers := strings.Split(os.Getenv("BROKERS"), ",")
 	inputTopics := strings.Split(os.Getenv("INPUT_TOPICS"), ",")
+
+	if len(inputTopics) == 0 || inputTopics[0] == "" {
+		log.Fatal("INPUT_TOPICS environment variable is not set or is empty")
+	}
+
+	log.Printf("Watching %d topic(s):", len(inputTopics))
+	for i, topic := range inputTopics {
+		trimmedTopic := strings.TrimSpace(topic)
+		if trimmedTopic != "" {
+			log.Printf("  [%d] %s", i+1, trimmedTopic)
+		}
+	}
 
 	ctx := context.Background()
 	prod := producer.NewProducer(brokers)
