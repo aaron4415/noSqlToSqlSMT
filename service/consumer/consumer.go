@@ -20,7 +20,7 @@ type Consumer struct {
 
 // NewConsumer creates a new Kafka consumer.
 func NewConsumer(brokers []string, topic string) *Consumer {
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-southeast-1"))
 	if err != nil {
 		panic(err)
 	}

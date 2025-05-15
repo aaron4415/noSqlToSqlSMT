@@ -5,6 +5,7 @@ go 1.24.1
 require github.com/segmentio/kafka-go v0.4.47
 
 require (
+	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.3
 	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.29.11 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.64 // indirect

@@ -22,6 +22,7 @@ type Producer struct {
 
 func NewProducer(brokers []string) *Producer {
 	cfg, _ := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion("ap-southeast-1"),
 		config.WithRetryer(func() aws.Retryer {
 			return retry.NewStandard(func(o *retry.StandardOptions) {
 				o.MaxAttempts = 10
