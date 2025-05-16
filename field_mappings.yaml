@@ -14,6 +14,6 @@ topics:
   - name: "mongo.data-hub-stream.firsthand_bid"
     include_fields: ["_id", "id", "name_zh-hk", "name_zh-cn", "name_en", "description_zh-hk", "description_zh-cn", "description_en", "developer_zh-hk", "developer_zh-cn", "developer_en", "description", "price_per_feet", "sub_category", "int_sm_district_id", "latitude", "longitude", "price"]
   - name: "mongo.data-hub-stream.building_facility_distance"
-    include_fields: ["_id", "id", "bldg_id", "cf_id", "geo_distance", "walking_distance", "walking_duration" ]
-  - name: "mongo.data-hub-stream.community_facility"
-    include_fields: ["_id", "id", "bldg_id", "ms_id", "distance", "walking_distance", "walking_duration"]
+    include_fields: ["_id", "bldg_id", "cf_id", "geo_distance", "walking_distance", "walking_duration" ]
+  - name: "mongo.data-hub-stream.building_mtr_distance"
+    include_fields: ["_id", "BLDG_ID", "MS_ID", "MSE_ID", "DISTANCE", "WALKING_DISTANCE", "WALKING_DURATION"]
