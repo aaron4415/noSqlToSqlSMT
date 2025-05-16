@@ -96,6 +96,10 @@ func (p *Producer) CreateAndWriteTopic(ctx context.Context, topic string, messag
 		AllowAutoTopicCreation: true,
 		Balancer:               &kafka.Hash{},
 		Transport:              p.transport,
+		BatchSize:              100,                    // Number of messages per batch
+		BatchTimeout:           100 * time.Millisecond, // Wait time before sending incomplete batch
+		RequiredAcks:           kafka.RequireAll,       // Optional: ensure replication
+		Async:                  false,                  // Optional: set to true to not block
 	}
 
 	retryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
