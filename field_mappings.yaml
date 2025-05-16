@@ -1,6 +1,4 @@
 topics:
-  - name: "mongo.data-hub-source.building_facility_distance"
-    include_fields: ["_id", "bldg_id", "cf_id", "cf_category", "geo_distance", "walking_distance"]
   - name: "mongo.data-hub-stream.community_facility"
     include_fields: ["_id", "id", "name_zh-hk", "name_zh-cn", "name_en", "address_zh-hk", "address_zh-cn", "address_en", "sub_category", "int_sm_district_id", "latitude", "longitude"]
   - name: "mongo.data-hub-stream.mtr_station"
