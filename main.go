@@ -274,7 +274,7 @@ func handleUpdate(doc map[string]interface{}, payload map[string]interface{}, pr
 }
 
 func handleDelete(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string) {
-	if err := prod.ProduceBatch(ctx, outputTopic, []kafka.Message{createTombstone(parentID)}); err != nil {
+	if err := prod.CreateAndWriteTopic(ctx, outputTopic, []kafka.Message{createTombstone(parentID)}); err != nil {
 		log.Fatalf("Error producing base message: %v", err)
 	} else {
 		log.Printf("Successfully produced delete messages to topic %s", outputTopic)
@@ -355,7 +355,7 @@ func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx
 
 			// Produce the batch of messages for the array field.
 			if len(messages) > 0 {
-				if err := prod.ProduceBatch(ctx, topicName, messages); err != nil {
+				if err := prod.CreateAndWriteTopic(ctx, topicName, messages); err != nil {
 					log.Fatalf("Error producing batch for field %s: %v", field, err)
 				}
 				log.Printf("Successfully produced %d messages to topic %s", len(messages), topicName)
@@ -567,7 +567,7 @@ func produceBaseMessage(doc map[string]interface{}, prod *producer.Producer, ctx
 
 	transformedOutputTopic := transformTopicName(outputTopic)
 
-	if err := prod.ProduceBatch(ctx, transformedOutputTopic, []kafka.Message{baseMsg}); err != nil {
+	if err := prod.CreateAndWriteTopic(ctx, transformedOutputTopic, []kafka.Message{baseMsg}); err != nil {
 		log.Printf("Error producing base message: %v", err)
 		return
 	}
@@ -664,7 +664,7 @@ func processArrayDiffs(diffResults []DiffResult, parentID string, prod *producer
 		}
 
 		if len(messages) > 0 {
-			if err := prod.ProduceBatch(ctx, topic, messages); err != nil {
+			if err := prod.CreateAndWriteTopic(ctx, topic, messages); err != nil {
 				log.Printf("Failed to produce to %s: %v", topic, err)
 			} else {
 				log.Printf("Successfully produced %d messages to topic %s", len(messages), topic)
