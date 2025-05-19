@@ -45,7 +45,7 @@ func ProcessMessage(value []byte, prod *producer.Producer, ctx context.Context, 
 	case "u": // Update
 		handleUpdate(doc, payload, prod, ctx, parentID, outputTopic)
 	case "d": // Delete
-		handleDelete(payload, prod, ctx, parentID, outputTopic)
+		HandleDelete(payload, prod, ctx, parentID, outputTopic)
 	case "r": // Delete
 		log.Printf("No need to handle Read operation")
 	default:

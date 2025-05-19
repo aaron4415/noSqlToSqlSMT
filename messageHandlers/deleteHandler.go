@@ -9,8 +9,9 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-func handleDelete(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string) {
-	if err := prod.CreateAndWriteTopic(ctx, outputTopic, []kafka.Message{utils.CreateTombstone(parentID)}); err != nil {
+func HandleDelete(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string) {
+	transformedOutputTopic := utils.TransformTopicName(outputTopic)
+	if err := prod.CreateAndWriteTopic(ctx, transformedOutputTopic, []kafka.Message{utils.CreateTombstone(parentID)}); err != nil {
 		log.Fatalf("Error producing base message: %v", err)
 	} else {
 		log.Printf("Successfully produced delete messages id: %s to topic %s", parentID, outputTopic)
@@ -26,5 +27,5 @@ func handleDelete(payload map[string]interface{}, prod *producer.Producer, ctx c
 		log.Printf("Error Compute Array Diffs: %v", err)
 		return
 	}
-	utils.ProcessArrayDiffs(diffResults, parentID, prod, ctx, outputTopic)
+	utils.ProcessArrayDiffs(diffResults, parentID, prod, ctx, transformedOutputTopic)
 }
