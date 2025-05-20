@@ -189,15 +189,70 @@ func FlattenMap(input map[string]interface{}, parentKey string, delimiter string
 }
 
 func CleanPayload(data map[string]interface{}, includeFields []string) {
+	hierarchy := buildFieldHierarchy(includeFields)
+	cleanRecursive(data, hierarchy, "")
+}
+
+// Build nested map structure from dot-separated paths
+func buildFieldHierarchy(fields []string) map[string]interface{} {
+	hierarchy := make(map[string]interface{})
+	for _, field := range fields {
+		parts := strings.Split(field, ".")
+		current := hierarchy
+		for _, part := range parts {
+			if current[part] == nil {
+				current[part] = make(map[string]interface{})
+			}
+			current = current[part].(map[string]interface{})
+		}
+	}
+	return hierarchy
+}
+
+func cleanRecursive(data map[string]interface{}, hierarchy map[string]interface{}, currentPath string) {
 	if data == nil {
 		return
 	}
 
 	for key := range data {
-		if !contains(includeFields, key) {
+		fullPath := joinPath(currentPath, key)
+
+		// Check if this field or any nested field is included
+		if _, exists := findSubtree(hierarchy, key); !exists {
 			delete(data, key)
+		} else {
+			// Process nested structures with updated hierarchy
+			processNested(data[key], hierarchy[key].(map[string]interface{}), fullPath)
 		}
 	}
+}
+
+func processNested(value interface{}, subtree map[string]interface{}, path string) {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		cleanRecursive(v, subtree, path)
+	case []interface{}:
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				cleanRecursive(m, subtree, path)
+			}
+		}
+	}
+}
+
+// Helper functions
+func joinPath(base, part string) string {
+	if base == "" {
+		return part
+	}
+	return base + "." + part
+}
+
+func findSubtree(hierarchy map[string]interface{}, key string) (map[string]interface{}, bool) {
+	if subtree, ok := hierarchy[key].(map[string]interface{}); ok {
+		return subtree, true
+	}
+	return nil, false
 }
 
 func contains(slice []string, item string) bool {
@@ -301,6 +356,7 @@ func CleanSchema(schema map[string]interface{}, includeFields []string) {
 	}
 	schema["fields"] = filtered
 }
+
 func GetBeforeAfter(payload map[string]interface{}) (before, after map[string]interface{}, err error) {
 	// Get and decode __before if available and not null
 	if beforeRaw, ok := payload["__before"]; ok && beforeRaw != nil {
@@ -447,4 +503,18 @@ func GetIncludeFields(topicName string) []string {
 		}
 	}
 	return nil
+}
+
+func GetStringField(m map[string]interface{}, keys ...string) (string, error) {
+	for _, key := range keys {
+		raw, exists := m[key]
+		if !exists || raw == nil {
+			continue
+		}
+		if s, ok := raw.(string); ok {
+			return s, nil
+		}
+		return "", fmt.Errorf("field %q is not a string (got %T)", key, raw)
+	}
+	return "", fmt.Errorf("none of %v found or all were null", keys)
 }

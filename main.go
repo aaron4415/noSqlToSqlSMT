@@ -17,7 +17,7 @@ import (
 
 func init() {
 	if err := utils.LoadFieldMappings(); err != nil {
-		log.Fatal("Error loading field mappings:", err)
+		log.Fatal("Error loading field mappings in field_mappings:", err)
 	}
 }
 

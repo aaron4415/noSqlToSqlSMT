@@ -12,44 +12,56 @@ import (
 )
 
 func ProcessMessage(value []byte, prod *producer.Producer, ctx context.Context, outputTopic string) {
-	// Parse the incoming JSON into a document.
+	// 1) Unmarshal into a generic map
 	var doc map[string]interface{}
-	if err := json.Unmarshal([]byte(value), &doc); err != nil {
+	if err := json.Unmarshal(value, &doc); err != nil {
 		log.Printf("❌ Error parsing JSON: %v", err)
 		return
 	}
 
-	// Extract the payload (actual data) from the document.
-	payload, ok := doc["payload"].(map[string]interface{})
+	// 2) Extract the payload object
+	payloadRaw, ok := doc["payload"]
 	if !ok {
-		log.Printf("No 'payload' field found in document or payload is not an object")
+		log.Printf("❌ Missing top-level 'payload' field")
+		return
+	}
+	payload, ok := payloadRaw.(map[string]interface{})
+	if !ok {
+		log.Printf("❌ 'payload' is not an object (got %T)", payloadRaw)
 		return
 	}
 
-	op, ok := payload["__op"].(string)
+	// 3) Extract the operation code
+	opRaw, ok := payload["__op"]
 	if !ok {
-		log.Printf("No 'op' field in payload")
+		log.Printf("❌ Missing '__op' in payload")
+		return
+	}
+	op, ok := opRaw.(string)
+	if !ok {
+		log.Printf("❌ '__op' is not a string (got %T)", opRaw)
 		return
 	}
 
-	// Get the parent's identifier from the payload (assuming it's a string).
-	parentID, ok := payload["id"].(string)
-	if !ok {
-		log.Printf("No 'id' field found in payload")
-		parentID = payload["_id"].(string)
+	// 4) Extract a stable ID field (try "id", then "_id")
+	parentID, err := utils.GetStringField(payload, "id", "_id")
+	if err != nil {
+		log.Printf("❌ %v", err)
+		return
 	}
 
+	// 5) Dispatch based on operation
 	switch op {
-	case "c": // Insert
+	case "c":
 		handleInsert(doc, payload, prod, ctx, parentID, outputTopic)
-	case "u": // Update
+	case "u":
 		handleUpdate(doc, payload, prod, ctx, parentID, outputTopic)
-	case "d": // Delete
+	case "d":
 		HandleDelete(payload, prod, ctx, parentID, outputTopic)
-	case "r": // Delete
-		log.Printf("No need to handle Read operation")
+	case "r":
+		log.Printf("🔍 Read op ignored")
 	default:
-		log.Printf("Unknown operation: %s", op)
+		log.Printf("❓ Unknown op %q", op)
 	}
 }
 
@@ -66,8 +78,6 @@ func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx
 		// Check if the field value is an array.
 		topicName := utils.TransformTopicName(fmt.Sprintf("%s_%s", outputTopic, field))
 		if arrayField, ok := fieldVal.([]interface{}); ok {
-			// Remove the array field from the base document.
-			delete(basePayload, field)
 
 			var messages []kafka.Message
 			// Process each element in the array.
