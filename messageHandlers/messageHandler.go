@@ -13,8 +13,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-var idRE = regexp.MustCompile(`Struct\{id=([0-9a-fA-F]{24})\}`)
-
 func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx context.Context, outputTopic string) {
 	// 1) Unmarshal into a generic map
 	var doc map[string]interface{}
@@ -23,7 +21,7 @@ func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx co
 		return
 	}
 	keyStr := string(keyBytes)
-	m := idRE.FindStringSubmatch(keyStr)
+	m := regexp.MustCompile(`id=([^\}]+)`).FindStringSubmatch(keyStr)
 	if len(m) < 2 {
 		log.Printf("❌ could not extract id from key: %q", keyStr)
 		return
