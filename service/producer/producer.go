@@ -99,7 +99,7 @@ func (p *Producer) CreateAndWriteTopic(ctx context.Context, topic string, messag
 		BatchSize:              2000,                 // Number of messages per batch
 		BatchTimeout:           1 * time.Millisecond, // Wait time before sending incomplete batch
 		RequiredAcks:           kafka.RequireAll,     // Optional: ensure replication
-		Async:                  false,                // Optional: set to true to not block
+		Async:                  true,                 // Optional: set to true to not block
 	}
 	defer w.Close()
 
