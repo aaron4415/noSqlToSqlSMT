@@ -11,13 +11,26 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-func ProcessMessage(value []byte, prod *producer.Producer, ctx context.Context, outputTopic string) {
+type KeyEnvelope struct {
+	ID struct {
+		OID string `json:"$oid"`
+	} `json:"_id"`
+}
+
+func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx context.Context, outputTopic string) {
 	// 1) Unmarshal into a generic map
 	var doc map[string]interface{}
-	if err := json.Unmarshal(value, &doc); err != nil {
+	if err := json.Unmarshal(valueBytes, &doc); err != nil {
 		log.Printf("❌ Error parsing JSON: %v", err)
 		return
 	}
+	var ke KeyEnvelope
+	if err := json.Unmarshal(keyBytes, &ke); err != nil {
+		log.Printf("❌ failed to parse key JSON: %v  raw key: %s", err, string(keyBytes))
+		return
+	}
+	documentID := ke.ID.OID
+	log.Printf("🔑 got _id = %s", documentID)
 
 	// 2) Extract the payload object
 	payloadRaw, ok := doc["payload"]
@@ -43,21 +56,14 @@ func ProcessMessage(value []byte, prod *producer.Producer, ctx context.Context, 
 		return
 	}
 
-	// 4) Extract a stable ID field (try "id", then "_id")
-	parentID, err := utils.GetStringField(payload, "id", "_id")
-	if err != nil {
-		log.Printf("❌ %v", err)
-		return
-	}
-
 	// 5) Dispatch based on operation
 	switch op {
 	case "c":
-		handleInsert(doc, payload, prod, ctx, parentID, outputTopic)
+		handleInsert(doc, payload, prod, ctx, documentID, outputTopic)
 	case "u":
-		handleUpdate(doc, payload, prod, ctx, parentID, outputTopic)
+		handleUpdate(doc, payload, prod, ctx, documentID, outputTopic)
 	case "d":
-		HandleDelete(payload, prod, ctx, parentID, outputTopic)
+		HandleDelete(payload, prod, ctx, documentID, outputTopic)
 	case "r":
 		log.Printf("🔍 Read op ignored")
 	default:

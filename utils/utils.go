@@ -504,17 +504,3 @@ func GetIncludeFields(topicName string) []string {
 	}
 	return nil
 }
-
-func GetStringField(m map[string]interface{}, keys ...string) (string, error) {
-	for _, key := range keys {
-		raw, exists := m[key]
-		if !exists || raw == nil {
-			continue
-		}
-		if s, ok := raw.(string); ok {
-			return s, nil
-		}
-		return "", fmt.Errorf("field %q is not a string (got %T)", key, raw)
-	}
-	return "", fmt.Errorf("none of %v found or all were null", keys)
-}

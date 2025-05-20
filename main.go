@@ -56,7 +56,7 @@ func main() {
 					log.Printf("null message")
 					return
 				} else {
-					messageHandlers.ProcessMessage(msg.Value, prod, ctx, outTopic)
+					messageHandlers.ProcessMessage(msg.Key, msg.Value, prod, ctx, outTopic)
 				}
 			}); err != nil {
 				log.Printf("Consumer error: %v", err)
