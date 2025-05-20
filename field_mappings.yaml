@@ -2,9 +2,9 @@ topics:
   - name: "mongo.data-hub-stream.community_facility"
     include_fields: ["_id", "id", "name_zh-hk", "name_zh-cn", "name_en", "address_zh-hk", "address_zh-cn", "address_en", "sub_category", "int_sm_district_id", "latitude", "longitude"]
   - name: "mongo.data-hub-stream.mtr_station"
-    include_fields: ["_id", "id", "name_zh-hk", "name_zh-cn", "name_en", "line", "color", "min_to_wkl", "min_to_lmc", "min_to_taw", "min_to_air", "min_to_cen", "min_to_nac", "min_to_nop", "min_to_tst", "min_to_low", "int_sm_district_id", "latitude", "longitude" ]
+    include_fields: ["_id", "id", "name_zh-hk", "name_zh-cn", "name_en", "line", "line.id", "line.name", "line.color", "color", "min_to_wkl", "min_to_lmc", "min_to_taw", "min_to_air", "min_to_cen", "min_to_nac", "min_to_nop", "min_to_tst", "min_to_low", "int_sm_district_id", "latitude", "longitude" ]
   - name: "mongo.data-hub-stream.bus"
-    include_fields: ["_id", "id", "name_zh-hk", "name_zh-cn", "name_en", "int_sm_district_id", "latitude", "longitude", "route"]
+    include_fields: ["_id", "id", "name_zh-hk", "name_zh-cn", "name_en", "int_sm_district_id", "latitude", "longitude", "route", "route.id", "route.name", "route.loc_start_name", "route.loc_end_name"]
   - name: "mongo.data-hub-stream.gov_school"
     include_fields: ["_id", "id", "name_zh-hk", "name_zh-cn", "name_en", "tags", "int_sm_district_id", "latitude", "longitude", "sub_category", "address_zh-hk", "address_zh-cn", "address_en" ]
   - name: "mongo.data-hub-stream.firsthand_consent"
