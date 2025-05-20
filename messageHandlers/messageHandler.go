@@ -7,15 +7,13 @@ import (
 	"kafka-go/service/producer"
 	"kafka-go/utils"
 	"log"
+	"regexp"
 
 	"github.com/segmentio/kafka-go"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-type KeyEnvelope struct {
-	ID struct {
-		OID string `json:"$oid"`
-	} `json:"_id"`
-}
+var idRE = regexp.MustCompile(`Struct\{id=([0-9a-fA-F]{24})\}`)
 
 func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx context.Context, outputTopic string) {
 	// 1) Unmarshal into a generic map
@@ -24,13 +22,22 @@ func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx co
 		log.Printf("❌ Error parsing JSON: %v", err)
 		return
 	}
-	var ke KeyEnvelope
-	if err := json.Unmarshal(keyBytes, &ke); err != nil {
-		log.Printf("❌ failed to parse key JSON: %v  raw key: %s", err, string(keyBytes))
+	keyStr := string(keyBytes)
+	m := idRE.FindStringSubmatch(keyStr)
+	if len(m) < 2 {
+		log.Printf("❌ could not extract id from key: %q", keyStr)
 		return
 	}
-	documentID := ke.ID.OID
-	log.Printf("🔑 got _id = %s", documentID)
+	hexID := m[1] // e.g. "6025404901a5d3928a1fb157"
+
+	// 2) Convert to a real ObjectID if you need to use mongo-driver types
+	objID, err := primitive.ObjectIDFromHex(hexID)
+	if err != nil {
+		log.Printf("❌ invalid object id %q: %v", hexID, err)
+		return
+	}
+	documentID := objID.Hex()
+	log.Printf("🔑 got documentID = %s", objID.Hex())
 
 	// 2) Extract the payload object
 	payloadRaw, ok := doc["payload"]
