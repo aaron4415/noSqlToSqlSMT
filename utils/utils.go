@@ -398,6 +398,29 @@ func ProcessArrayDiffs(diffResults []DiffResult, parentID string, prod *producer
 		var messages []kafka.Message
 
 		if diff.IsObjectArray {
+			for _, item := range diff.AddedItems {
+				if obj, ok := item.(map[string]interface{}); ok {
+					if id, exists := obj["id"]; exists {
+						compositeID := fmt.Sprintf("%s_%v", parentID, id)
+						msgPayload := map[string]interface{}{
+							"_id":       compositeID, // Composite primary key
+							"parent_id": parentID,    // Explicit parent reference
+						}
+
+						// Merge all fields from the object
+						for key, value := range obj {
+							msgPayload[key] = value
+						}
+						msgPayload = FlattenMap(msgPayload, "", "_")
+						msg, err := BuildKafkaMessage(topic, compositeID, msgPayload)
+						if err != nil {
+							log.Printf("Error creating message: %v", err)
+							continue
+						}
+						messages = append(messages, *msg)
+					}
+				}
+			}
 			for _, item := range diff.RemovedItems {
 				if obj, ok := item.(map[string]interface{}); ok {
 					if id, exists := obj["id"]; exists {

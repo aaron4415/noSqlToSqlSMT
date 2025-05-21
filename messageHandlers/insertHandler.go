@@ -16,7 +16,7 @@ func handleInsert(doc map[string]interface{}, payload map[string]interface{}, pr
 	delete(payload, "__before")
 	delete(payload, "__after")
 	utils.CleanPayload(payload, includeFields)
-	processedPayload, err := processPayload(payload, prod, ctx, parentID, outputTopic)
+	processedPayload, err := processPayload(payload, prod, ctx, parentID, outputTopic, true)
 	if err != nil {
 		log.Printf("Error processing payload: %v", err)
 		return
