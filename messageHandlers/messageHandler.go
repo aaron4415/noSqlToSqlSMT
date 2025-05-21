@@ -69,7 +69,7 @@ func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx co
 	}
 }
 
-func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string, updateSubTable bool) (map[string]interface{}, error) {
+func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string) (map[string]interface{}, error) {
 	// Make a copy of payload for the base document.
 	basePayload := make(map[string]interface{})
 	for k, v := range payload {
@@ -131,7 +131,7 @@ func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx
 			}
 
 			// Produce the batch of messages for the array field.
-			if len(messages) > 0 && updateSubTable {
+			if len(messages) > 0 {
 				if err := prod.CreateAndWriteTopic(ctx, topicName, messages); err != nil {
 					log.Fatalf("Error producing batch for field %s: %v", field, err)
 				}
