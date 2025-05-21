@@ -18,7 +18,7 @@ func handleUpdate(doc map[string]interface{}, payload map[string]interface{}, pr
 		utils.CleanPayload(after, includeFields)
 	}
 
-	processedPayload, err := processPayload(payload, prod, ctx, parentID, outputTopic)
+	processedPayload, err := processPayload(payload, prod, ctx, parentID, outputTopic, false)
 	if err != nil {
 		log.Printf("Error processing payload: %v", err)
 		return

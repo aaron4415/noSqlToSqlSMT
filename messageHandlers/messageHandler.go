@@ -10,7 +10,6 @@ import (
 	"regexp"
 
 	"github.com/segmentio/kafka-go"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx context.Context, outputTopic string) {
@@ -22,20 +21,14 @@ func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx co
 	}
 	keyStr := string(keyBytes)
 	m := regexp.MustCompile(`id=([^\}]+)`).FindStringSubmatch(keyStr)
-	if len(m) < 2 {
+	if len(m) < 1 {
 		log.Printf("❌ could not extract id from key: %q", keyStr)
 		return
 	}
-	hexID := m[1] // e.g. "6025404901a5d3928a1fb157"
 
 	// 2) Convert to a real ObjectID if you need to use mongo-driver types
-	objID, err := primitive.ObjectIDFromHex(hexID)
-	if err != nil {
-		log.Printf("❌ invalid object id %q: %v", hexID, err)
-		return
-	}
-	documentID := objID.Hex()
-	log.Printf("🔑 got documentID = %s", objID.Hex())
+	documentID := m[1]
+	log.Printf("🔑 got documentID = %s", documentID)
 
 	// 2) Extract the payload object
 	payloadRaw, ok := doc["payload"]
@@ -76,15 +69,13 @@ func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx co
 	}
 }
 
-func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string) (map[string]interface{}, error) {
+func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string, updateSubTable bool) (map[string]interface{}, error) {
 	// Make a copy of payload for the base document.
 	basePayload := make(map[string]interface{})
 	for k, v := range payload {
 		basePayload[k] = v
 	}
 
-	// Prepare a slice to hold messages for array fields.
-	// We'll produce these messages to topics like "finalmongotestmsk_<field>"
 	for field, fieldVal := range payload {
 		// Check if the field value is an array.
 		topicName := utils.TransformTopicName(fmt.Sprintf("%s_%s", outputTopic, field))
@@ -140,7 +131,7 @@ func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx
 			}
 
 			// Produce the batch of messages for the array field.
-			if len(messages) > 0 {
+			if len(messages) > 0 && updateSubTable {
 				if err := prod.CreateAndWriteTopic(ctx, topicName, messages); err != nil {
 					log.Fatalf("Error producing batch for field %s: %v", field, err)
 				}
