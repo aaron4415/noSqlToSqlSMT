@@ -189,24 +189,26 @@ func FlattenMap(input map[string]interface{}, parentKey string, delimiter string
 }
 
 func CleanPayload(data map[string]interface{}, includeFields []string) {
-	hierarchy := buildFieldHierarchy(includeFields)
+	hierarchy := buildHierarchyTree(includeFields)
 	cleanRecursive(data, hierarchy, "")
 }
 
 // Build nested map structure from dot-separated paths
-func buildFieldHierarchy(fields []string) map[string]interface{} {
-	hierarchy := make(map[string]interface{})
-	for _, field := range fields {
-		parts := strings.Split(field, ".")
-		current := hierarchy
-		for _, part := range parts {
-			if current[part] == nil {
-				current[part] = make(map[string]interface{})
+func buildHierarchyTree(fields []string) map[string]interface{} {
+	root := make(map[string]interface{})
+	for _, f := range fields {
+		parts := strings.Split(f, ".")
+		node := root
+		for _, p := range parts {
+			child, exists := node[p]
+			if !exists {
+				child = make(map[string]interface{})
+				node[p] = child
 			}
-			current = current[part].(map[string]interface{})
+			node = child.(map[string]interface{})
 		}
 	}
-	return hierarchy
+	return root
 }
 
 func cleanRecursive(data map[string]interface{}, hierarchy map[string]interface{}, currentPath string) {
