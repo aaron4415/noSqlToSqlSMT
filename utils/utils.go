@@ -384,27 +384,38 @@ func CleanSchema(schema map[string]interface{}, includeFields []string) {
 }
 
 func GetBeforeAfter(payload map[string]interface{}) (before, after map[string]interface{}, err error) {
-	// Get and decode __before if available and not null
+	// Get and decode __before
 	if beforeRaw, ok := payload["__before"]; ok && beforeRaw != nil {
 		if beforeStr, ok := beforeRaw.(string); ok {
-			before, err = parseJSONField(beforeStr)
+			parsedBefore, err := parseJSONField(beforeStr)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error parsing before: %v", err)
 			}
-		}
-	}
-
-	// Get and decode __after if available and not null
-	if afterRaw, ok := payload["__after"]; ok && afterRaw != nil {
-		if afterStr, ok := afterRaw.(string); ok {
-			after, err = parseJSONField(afterStr)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error parsing after: %v", err)
+			// Extract nested __before if it exists
+			if nestedBefore, ok := parsedBefore["__before"].(map[string]interface{}); ok {
+				before = nestedBefore
+			} else {
+				before = parsedBefore
 			}
 		}
 	}
 
-	// If both are nil, return error
+	// Get and decode __after
+	if afterRaw, ok := payload["__after"]; ok && afterRaw != nil {
+		if afterStr, ok := afterRaw.(string); ok {
+			parsedAfter, err := parseJSONField(afterStr)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error parsing after: %v", err)
+			}
+			// Extract nested __after if it exists
+			if nestedAfter, ok := parsedAfter["__after"].(map[string]interface{}); ok {
+				after = nestedAfter
+			} else {
+				after = parsedAfter
+			}
+		}
+	}
+
 	if before == nil && after == nil {
 		return nil, nil, fmt.Errorf("both before and after are null")
 	}

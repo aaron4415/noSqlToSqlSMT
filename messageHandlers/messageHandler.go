@@ -90,6 +90,7 @@ func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx
 		topicName := utils.TransformTopicName(fmt.Sprintf("%s_%s", outputTopic, field))
 		if arrayField, ok := fieldVal.([]interface{}); ok {
 
+			delete(basePayload, field)
 			var messages []kafka.Message
 			// Process each element in the array.
 			for _, arrayItem := range arrayField {
