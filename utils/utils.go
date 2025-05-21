@@ -215,7 +215,7 @@ func cleanRecursive(data map[string]interface{}, hierarchy map[string]interface{
 	if data == nil {
 		return
 	}
-
+	log.Printf("Simple output: %v", data)
 	for key := range data {
 		fullPath := joinPath(currentPath, key)
 
