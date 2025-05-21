@@ -215,7 +215,7 @@ func cleanRecursive(data map[string]interface{}, hierarchy map[string]interface{
 	if data == nil {
 		return
 	}
-	log.Printf("Simple output: %v", data)
+
 	for key := range data {
 		fullPath := joinPath(currentPath, key)
 
@@ -411,7 +411,8 @@ func GetBeforeAfter(payload map[string]interface{}) (before, after map[string]in
 
 	before = flattenWrapper(before, "__before")
 	after = flattenWrapper(after, "__after")
-
+	log.Printf("Simple before: %v", before)
+	log.Printf("Simple after: %v", after)
 	return before, after, nil
 }
 
