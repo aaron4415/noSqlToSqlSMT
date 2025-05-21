@@ -419,7 +419,7 @@ func ProcessArrayDiffs(diffResults []DiffResult, parentID string, prod *producer
 			for _, item := range diff.RemovedItems {
 				if obj, ok := item.(map[string]interface{}); ok {
 					if id, exists := obj["id"]; exists {
-						compositeID := fmt.Sprintf("%s_%s", parentID, id)
+						compositeID := fmt.Sprintf("%s_%v", parentID, id)
 						messages = append(messages, CreateTombstone(compositeID))
 					}
 				}
