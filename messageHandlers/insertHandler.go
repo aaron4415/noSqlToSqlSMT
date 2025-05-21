@@ -13,7 +13,7 @@ func handleInsert(doc map[string]interface{}, payload map[string]interface{}, pr
 		log.Printf("No field mapping found for topic: %s", outputTopic)
 		return
 	}
-
+	log.Printf("Simple payload: %v", payload)
 	utils.CleanPayload(payload, includeFields)
 	processedPayload, err := processPayload(payload, prod, ctx, parentID, outputTopic)
 	if err != nil {

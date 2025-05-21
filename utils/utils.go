@@ -274,61 +274,71 @@ func parseJSONField(data string) (map[string]interface{}, error) {
 
 func ComputeArrayDiffs(before, after interface{}, opts bool) ([]DiffResult, error) {
 	var diffs []DiffResult
+	visited := make(map[string]struct{})
+
 	var walk func(path string, a, b interface{})
 	walk = func(path string, a, b interface{}) {
-		// 1) Maps as before...
 		mapA, okA := a.(map[string]interface{})
 		mapB, okB := b.(map[string]interface{})
-		if okA && okB {
-			for key := range mapA {
-				next := key
-				if path != "" {
-					next = path + "_" + key
+
+		if okA || okB {
+			allKeys := map[string]struct{}{}
+			if okA {
+				for k := range mapA {
+					allKeys[k] = struct{}{}
 				}
-				walk(next, mapA[key], mapB[key])
+			}
+			if okB {
+				for k := range mapB {
+					allKeys[k] = struct{}{}
+				}
+			}
+
+			for key := range allKeys {
+				nextPath := key
+				if path != "" {
+					nextPath = path + "_" + key
+				}
+				walk(nextPath, mapA[key], mapB[key])
 			}
 			return
 		}
 
-		// 2) Handle array vs nil (or non‐array) => record full removal or addition
 		arrA, isArrA := a.([]interface{})
 		arrB, isArrB := b.([]interface{})
-		// case: array existed before but gone after => everything removed
-		if isArrA && !isArrB {
-			diffs = append(diffs, DiffResult{
-				ArrayName:     path,
-				IsObjectArray: len(arrA) > 0 && arrA[0] != nil && reflect.TypeOf(arrA[0]).Kind() == reflect.Map,
-				RemovedItems:  arrA,
-				AddedItems:    nil,
-			})
-			return
-		}
-		// case: array appears new after
-		if !isArrA && isArrB && opts {
-			diffs = append(diffs, DiffResult{
-				ArrayName:     path,
-				IsObjectArray: len(arrB) > 0 && arrB[0] != nil && reflect.TypeOf(arrB[0]).Kind() == reflect.Map,
-				RemovedItems:  nil,
-				AddedItems:    arrB,
-			})
-			return
-		}
 
-		// 3) Your existing "both non‐nil arrays" logic
-		if isArrA && isArrB {
-			isObjectArray := false
-			if len(arrA) > 0 {
-				_, isObjectArray = arrA[0].(map[string]interface{})
+		if isArrA || isArrB {
+			if _, seen := visited[path]; seen {
+				return
 			}
+			visited[path] = struct{}{}
+
+			isObjectArray := false
+			if isArrA && len(arrA) > 0 {
+				_, isObjectArray = arrA[0].(map[string]interface{})
+			} else if isArrB && len(arrB) > 0 {
+				_, isObjectArray = arrB[0].(map[string]interface{})
+			}
+
 			var removed, added []interface{}
-			if isObjectArray {
-				removed = objectDifference(arrA, arrB)
-			} else {
-				removed = primitiveDifference(arrA, arrB)
-				if opts {
-					added = primitiveDifference(arrB, arrA)
+			if isArrA && !isArrB {
+				removed = arrA
+			} else if !isArrA && isArrB && opts {
+				added = arrB
+			} else if isArrA && isArrB {
+				if isObjectArray {
+					removed = objectDifference(arrA, arrB)
+					if opts {
+						added = objectDifference(arrB, arrA)
+					}
+				} else {
+					removed = primitiveDifference(arrA, arrB)
+					if opts {
+						added = primitiveDifference(arrB, arrA)
+					}
 				}
 			}
+
 			if len(removed) > 0 || len(added) > 0 {
 				diffs = append(diffs, DiffResult{
 					ArrayName:     path,
@@ -337,10 +347,7 @@ func ComputeArrayDiffs(before, after interface{}, opts bool) ([]DiffResult, erro
 					AddedItems:    added,
 				})
 			}
-			return
 		}
-
-		// 4) Otherwise: primitives or mixed types, ignore
 	}
 
 	walk("", before, after)
@@ -411,8 +418,6 @@ func GetBeforeAfter(payload map[string]interface{}) (before, after map[string]in
 
 	before = flattenWrapper(before, "__before")
 	after = flattenWrapper(after, "__after")
-	log.Printf("Simple before: %v", before)
-	log.Printf("Simple after: %v", after)
 	return before, after, nil
 }
 
