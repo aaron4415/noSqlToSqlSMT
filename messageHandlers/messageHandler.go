@@ -83,51 +83,52 @@ func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx
 
 			delete(basePayload, field)
 			var messages []kafka.Message
-			// Process each element in the array.
-			for _, arrayItem := range arrayField {
-				// Build a message payload for the array element
-				var msgPayload map[string]interface{}
+			if updateSubTable {
+				for _, arrayItem := range arrayField {
+					// Build a message payload for the array element
+					var msgPayload map[string]interface{}
 
-				if obj, ok := arrayItem.(map[string]interface{}); ok {
-					// Get child ID from array item
-					childID, exists := obj["id"]
-					if !exists {
-						log.Printf("Array item in field %s missing 'id'", field)
+					if obj, ok := arrayItem.(map[string]interface{}); ok {
+						// Get child ID from array item
+						childID, exists := obj["id"]
+						if !exists {
+							log.Printf("Array item in field %s missing 'id'", field)
+							continue
+						}
+
+						// Create composite _id = parentID + "_" + childID
+						compositeID := fmt.Sprintf("%s_%v", parentID, childID)
+
+						// Build payload with composite _id
+						msgPayload = map[string]interface{}{
+							"_id":       compositeID, // Composite primary key
+							"parent_id": parentID,    // Explicit parent reference
+						}
+
+						// Merge all fields from the object
+						for key, value := range obj {
+							msgPayload[key] = value
+						}
+					} else {
+						// Handle primitive values differently
+						compositeID := fmt.Sprintf("%s_%v", parentID, utils.ToHashID(arrayItem))
+						msgPayload = map[string]interface{}{
+							"_id":       compositeID,
+							"parent_id": parentID,
+							"value":     arrayItem,
+						}
+					}
+					// Flatten nested structures in the message payload
+					msgPayload = utils.FlattenMap(msgPayload, "", "_")
+					// Build Kafka message using composite ID as key
+					msgKey := msgPayload["_id"].(string)
+					msg, err := utils.BuildKafkaMessage(topicName, msgKey, msgPayload)
+					if err != nil {
+						log.Printf("Error creating message: %v", err)
 						continue
 					}
-
-					// Create composite _id = parentID + "_" + childID
-					compositeID := fmt.Sprintf("%s_%v", parentID, childID)
-
-					// Build payload with composite _id
-					msgPayload = map[string]interface{}{
-						"_id":       compositeID, // Composite primary key
-						"parent_id": parentID,    // Explicit parent reference
-					}
-
-					// Merge all fields from the object
-					for key, value := range obj {
-						msgPayload[key] = value
-					}
-				} else {
-					// Handle primitive values differently
-					compositeID := fmt.Sprintf("%s_%v", parentID, utils.ToHashID(arrayItem))
-					msgPayload = map[string]interface{}{
-						"_id":       compositeID,
-						"parent_id": parentID,
-						"value":     arrayItem,
-					}
+					messages = append(messages, *msg)
 				}
-				// Flatten nested structures in the message payload
-				msgPayload = utils.FlattenMap(msgPayload, "", "_")
-				// Build Kafka message using composite ID as key
-				msgKey := msgPayload["_id"].(string)
-				msg, err := utils.BuildKafkaMessage(topicName, msgKey, msgPayload)
-				if err != nil {
-					log.Printf("Error creating message: %v", err)
-					continue
-				}
-				messages = append(messages, *msg)
 			}
 
 			// Produce the batch of messages for the array field.
