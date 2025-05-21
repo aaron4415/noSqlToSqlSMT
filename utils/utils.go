@@ -189,72 +189,30 @@ func FlattenMap(input map[string]interface{}, parentKey string, delimiter string
 }
 
 func CleanPayload(data map[string]interface{}, includeFields []string) {
-	hierarchy := buildHierarchyTree(includeFields)
-	cleanRecursive(data, hierarchy, "")
+	allowed := buildFlatSet(includeFields)
+	cleanTopLevelOnly(data, allowed)
 }
 
-// Build nested map structure from dot-separated paths
-func buildHierarchyTree(fields []string) map[string]interface{} {
-	root := make(map[string]interface{})
+func buildFlatSet(fields []string) map[string]struct{} {
+	set := make(map[string]struct{})
 	for _, f := range fields {
-		parts := strings.Split(f, ".")
-		node := root
-		for _, p := range parts {
-			child, exists := node[p]
-			if !exists {
-				child = make(map[string]interface{})
-				node[p] = child
-			}
-			node = child.(map[string]interface{})
-		}
+		// Only keep the top-level field (before the first dot)
+		topLevel := strings.SplitN(f, ".", 2)[0]
+		set[topLevel] = struct{}{}
 	}
-	return root
+	return set
 }
 
-func cleanRecursive(data map[string]interface{}, hierarchy map[string]interface{}, currentPath string) {
+func cleanTopLevelOnly(data map[string]interface{}, allowedFields map[string]struct{}) {
 	if data == nil {
 		return
 	}
 
 	for key := range data {
-		fullPath := joinPath(currentPath, key)
-
-		// Check if this field or any nested field is included
-		if _, exists := findSubtree(hierarchy, key); !exists {
+		if _, keep := allowedFields[key]; !keep {
 			delete(data, key)
-		} else {
-			// Process nested structures with updated hierarchy
-			processNested(data[key], hierarchy[key].(map[string]interface{}), fullPath)
 		}
 	}
-}
-
-func processNested(value interface{}, subtree map[string]interface{}, path string) {
-	switch v := value.(type) {
-	case map[string]interface{}:
-		cleanRecursive(v, subtree, path)
-	case []interface{}:
-		for _, item := range v {
-			if m, ok := item.(map[string]interface{}); ok {
-				cleanRecursive(m, subtree, path)
-			}
-		}
-	}
-}
-
-// Helper functions
-func joinPath(base, part string) string {
-	if base == "" {
-		return part
-	}
-	return base + "." + part
-}
-
-func findSubtree(hierarchy map[string]interface{}, key string) (map[string]interface{}, bool) {
-	if subtree, ok := hierarchy[key].(map[string]interface{}); ok {
-		return subtree, true
-	}
-	return nil, false
 }
 
 func contains(slice []string, item string) bool {
