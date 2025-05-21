@@ -398,6 +398,14 @@ func ProcessArrayDiffs(diffResults []DiffResult, parentID string, prod *producer
 		var messages []kafka.Message
 
 		if diff.IsObjectArray {
+			for _, item := range diff.RemovedItems {
+				if obj, ok := item.(map[string]interface{}); ok {
+					if id, exists := obj["id"]; exists {
+						compositeID := fmt.Sprintf("%s_%v", parentID, id)
+						messages = append(messages, CreateTombstone(compositeID))
+					}
+				}
+			}
 			for _, item := range diff.AddedItems {
 				if obj, ok := item.(map[string]interface{}); ok {
 					if id, exists := obj["id"]; exists {
@@ -418,14 +426,6 @@ func ProcessArrayDiffs(diffResults []DiffResult, parentID string, prod *producer
 							continue
 						}
 						messages = append(messages, *msg)
-					}
-				}
-			}
-			for _, item := range diff.RemovedItems {
-				if obj, ok := item.(map[string]interface{}); ok {
-					if id, exists := obj["id"]; exists {
-						compositeID := fmt.Sprintf("%s_%v", parentID, id)
-						messages = append(messages, CreateTombstone(compositeID))
 					}
 				}
 			}
