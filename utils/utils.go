@@ -384,43 +384,48 @@ func CleanSchema(schema map[string]interface{}, includeFields []string) {
 }
 
 func GetBeforeAfter(payload map[string]interface{}) (before, after map[string]interface{}, err error) {
-	// Get and decode __before
+	// Get and decode __before if available and not null
 	if beforeRaw, ok := payload["__before"]; ok && beforeRaw != nil {
 		if beforeStr, ok := beforeRaw.(string); ok {
-			parsedBefore, err := parseJSONField(beforeStr)
+			before, err = parseJSONField(beforeStr)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error parsing before: %v", err)
 			}
-			// Extract nested __before if it exists
-			if nestedBefore, ok := parsedBefore["__before"].(map[string]interface{}); ok {
-				before = nestedBefore
-			} else {
-				before = parsedBefore
-			}
 		}
 	}
 
-	// Get and decode __after
+	// Get and decode __after if available and not null
 	if afterRaw, ok := payload["__after"]; ok && afterRaw != nil {
 		if afterStr, ok := afterRaw.(string); ok {
-			parsedAfter, err := parseJSONField(afterStr)
+			after, err = parseJSONField(afterStr)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error parsing after: %v", err)
 			}
-			// Extract nested __after if it exists
-			if nestedAfter, ok := parsedAfter["__after"].(map[string]interface{}); ok {
-				after = nestedAfter
-			} else {
-				after = parsedAfter
-			}
 		}
 	}
 
+	// If both are nil, return error
 	if before == nil && after == nil {
 		return nil, nil, fmt.Errorf("both before and after are null")
 	}
 
+	before = flattenWrapper(before, "__before")
+	after = flattenWrapper(after, "__after")
+
 	return before, after, nil
+}
+
+func flattenWrapper(m map[string]interface{}, wrapperKey string) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	if inner, ok := m[wrapperKey].(map[string]interface{}); ok {
+		for k, v := range inner {
+			m[k] = v
+		}
+		delete(m, wrapperKey)
+	}
+	return m
 }
 
 func ProcessArrayDiffs(diffResults []DiffResult, parentID string, prod *producer.Producer, ctx context.Context, outputTopic string) {
