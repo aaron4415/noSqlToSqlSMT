@@ -29,8 +29,6 @@ func handleUpdate(doc map[string]interface{}, payload map[string]interface{}, pr
 		log.Printf("Error Compute Array Diffs: %v", err)
 		return
 	}
-	log.Printf("Before: %+v", before)
-	log.Printf("After: %+v", after)
 	log.Printf("Diffs: %+v", diffResults)
 	utils.ProcessArrayDiffs(diffResults, parentID, prod, ctx, outputTopic)
 

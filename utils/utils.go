@@ -456,38 +456,20 @@ func CreateTombstone(compositeID string) kafka.Message {
 }
 
 func objectDifference(a, b []interface{}) []interface{} {
-	var diff []interface{}
+	var result []interface{}
 	for _, itemA := range a {
-		mapA, okA := itemA.(map[string]interface{})
-		if !okA {
-			continue
-		}
-		idA, okA := mapA["id"]
-		if !okA {
-			continue
-		}
-
 		found := false
 		for _, itemB := range b {
-			mapB, okB := itemB.(map[string]interface{})
-			if !okB {
-				continue
-			}
-			idB, okB := mapB["id"]
-			if !okB {
-				continue
-			}
-			if reflect.DeepEqual(idA, idB) {
+			if reflect.DeepEqual(itemA, itemB) {
 				found = true
 				break
 			}
 		}
-
 		if !found {
-			diff = append(diff, itemA)
+			result = append(result, itemA)
 		}
 	}
-	return diff
+	return result
 }
 
 func LoadFieldMappings() error {
