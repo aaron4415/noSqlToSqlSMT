@@ -45,49 +45,6 @@ func NewProducer(brokers []string) *Producer {
 	}
 }
 
-// func (p *Producer) ProduceBatch(ctx context.Context, topic string, messages []kafka.Message) error {
-// 	dialer := &kafka.Dialer{
-// 		Timeout:       90 * time.Second,
-// 		DualStack:     true,
-// 		SASLMechanism: p.mechanism,
-// 		TLS:           &tls.Config{},
-// 	}
-
-// 	writer := kafka.NewWriter(kafka.WriterConfig{
-// 		Brokers:  p.brokers,
-// 		Topic:    topic,
-// 		Balancer: &kafka.LeastBytes{},
-// 		Dialer:   dialer,
-// 	})
-// 	defer writer.Close()
-
-// 	attemptTimeout := 90 * time.Second
-// 	maxRetries := 10
-
-// 	var writeErr error
-// 	for i := range maxRetries {
-
-// 		retryCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
-// 		defer cancel()
-
-// 		writeErr = writer.WriteMessages(retryCtx, messages...)
-// 		if writeErr == nil {
-// 			return nil
-// 		}
-// 		log.Printf("Write attempt %d for topic %s failed: %v", i+1, topic, writeErr)
-// 		if strings.Contains(writeErr.Error(), "Unknown Topic Or Partition") {
-// 			log.Printf("Topic %s not found, attempting explicit creation", topic)
-// 			if err := p.createAndWriteTopic(ctx, topic, messages); err != nil {
-// 				log.Printf("Failed to create topic %s: %v", topic, err)
-// 			} else {
-// 				return nil
-// 			}
-// 		}
-// 		time.Sleep(2 * time.Second)
-// 	}
-// 	return writeErr
-// }
-
 func (p *Producer) CreateAndWriteTopic(ctx context.Context, topic string, messages []kafka.Message) error {
 
 	w := kafka.Writer{
@@ -110,6 +67,15 @@ func (p *Producer) CreateAndWriteTopic(ctx context.Context, topic string, messag
 	for i := range 5 {
 		writeErr = w.WriteMessages(retryCtx, messages...)
 		if writeErr == nil {
+
+			log.Printf("Successfully wrote %d messages to topic: %s", len(messages), topic)
+
+			for _, msg := range messages {
+				keyString := string(msg.Key)
+				msgString := string(msg.Value)
+				log.Printf("Message written - Topic: %s, Key: %s, message: %s", topic, keyString, msgString)
+			}
+
 			return nil
 		}
 		log.Printf("Explicit topic creation write attempt %d for topic %s failed: %v", i+1, topic, writeErr)

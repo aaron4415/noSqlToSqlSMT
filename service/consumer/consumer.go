@@ -30,7 +30,7 @@ func NewConsumer(brokers []string, topic string) *Consumer {
 		Reader: kafka.NewReader(kafka.ReaderConfig{
 			Brokers:     brokers,
 			Topic:       topic,
-			GroupID:     "my-app-consumer",
+			GroupID:     "my-app-consumer-9",
 			MaxBytes:    10e6, // 10MB
 			StartOffset: kafka.FirstOffset,
 			Dialer: &kafka.Dialer{

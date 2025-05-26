@@ -57,132 +57,101 @@ func ProcessMessage(keyBytes, valueBytes []byte, prod *producer.Producer, ctx co
 	// 5) Dispatch based on operation
 	switch op {
 	case "c":
-		handleInsert(doc, payload, prod, ctx, documentID, outputTopic)
+		handleUpdateOrInsert(payload, prod, ctx, documentID, outputTopic)
 	case "u":
-		handleUpdate(doc, payload, prod, ctx, documentID, outputTopic)
+		handleUpdateOrInsert(payload, prod, ctx, documentID, outputTopic)
 	case "d":
 		HandleDelete(payload, prod, ctx, documentID, outputTopic)
 	case "r":
-		log.Printf("🔍 Read op ignored")
+		handleUpdateOrInsert(payload, prod, ctx, documentID, outputTopic)
 	default:
 		log.Printf("❓ Unknown op %q", op)
 	}
 }
 
-func processPayload(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string, updateSubTable bool) (map[string]interface{}, error) {
-	// Make a copy of payload for the base document.
-	basePayload := make(map[string]interface{})
-	for k, v := range payload {
-		basePayload[k] = v
-	}
-
-	for field, fieldVal := range payload {
-		// Check if the field value is an array.
-		topicName := utils.TransformTopicName(fmt.Sprintf("%s_%s", outputTopic, field))
-		if arrayField, ok := fieldVal.([]interface{}); ok {
-
-			delete(basePayload, field)
-			var messages []kafka.Message
-			if updateSubTable {
-				for _, arrayItem := range arrayField {
-					// Build a message payload for the array element
-					var msgPayload map[string]interface{}
-
-					if obj, ok := arrayItem.(map[string]interface{}); ok {
-						// Get child ID from array item
-						childID, exists := obj["id"]
-						if !exists {
-							log.Printf("Array item in field %s missing 'id'", field)
-							continue
-						}
-
-						// Create composite _id = parentID + "_" + childID
-						compositeID := fmt.Sprintf("%s_%v", parentID, childID)
-
-						// Build payload with composite _id
-						msgPayload = map[string]interface{}{
-							"_id":       compositeID, // Composite primary key
-							"parent_id": parentID,    // Explicit parent reference
-						}
-
-						// Merge all fields from the object
-						for key, value := range obj {
-							msgPayload[key] = value
-						}
-					} else {
-						// Handle primitive values differently
-						compositeID := fmt.Sprintf("%s_%v", parentID, utils.ToHashID(arrayItem))
-						msgPayload = map[string]interface{}{
-							"_id":       compositeID,
-							"parent_id": parentID,
-							"value":     arrayItem,
+func ProcessArrayDiffs(diffResults []utils.DiffResult, parentID string, prod *producer.Producer, ctx context.Context, outputTopic string, includeFields []string, nested map[string][]string) {
+	for _, diff := range diffResults {
+		topic := utils.TransformTopicName(fmt.Sprintf("%s_%v", outputTopic, diff.ArrayName))
+		var messages []kafka.Message
+		if utils.Contains(includeFields, diff.ArrayName) {
+			if diff.IsObjectArray {
+				allowed := nested[diff.ArrayName]
+				allowed = append(allowed, "parent_id")
+				for _, item := range diff.RemovedItems {
+					if obj, ok := item.(map[string]interface{}); ok {
+						if id, exists := obj["id"]; exists {
+							compositeID := fmt.Sprintf("%s_%v", parentID, id)
+							messages = append(messages, utils.CreateTombstone(compositeID))
 						}
 					}
-					// Flatten nested structures in the message payload
-					msgPayload = utils.FlattenMap(msgPayload, "", "_")
-					// Build Kafka message using composite ID as key
-					msgKey := msgPayload["_id"].(string)
-					msg, err := utils.BuildKafkaMessage(topicName, msgKey, msgPayload)
+				}
+				for _, item := range diff.AddedItems {
+					if obj, ok := item.(map[string]interface{}); ok {
+						if id, exists := obj["id"]; exists {
+							compositeID := fmt.Sprintf("%s_%v", parentID, id)
+							msgPayload := map[string]interface{}{
+								"_id":       compositeID, // Composite primary key
+								"parent_id": parentID,    // Explicit parent reference
+							}
+
+							// Merge all fields from the object
+							for key, value := range obj {
+								msgPayload[key] = value
+							}
+
+							msg, err := utils.BuildKafkaMessage(topic, compositeID, msgPayload, allowed)
+							if err != nil {
+								log.Printf("Error creating message: %v", err)
+								continue
+							}
+							messages = append(messages, *msg)
+						}
+					}
+				}
+			} else {
+				for _, item := range diff.AddedItems {
+					compositeID := fmt.Sprintf("%s_%v", parentID, utils.ToHashID(item))
+					msgPayload := map[string]interface{}{
+						"_id":       compositeID,
+						"parent_id": parentID,
+						"value":     item,
+					}
+
+					msg, err := utils.BuildKafkaMessage(topic, compositeID, msgPayload, []string{"_id", "parent_id", "value"})
 					if err != nil {
 						log.Printf("Error creating message: %v", err)
 						continue
 					}
 					messages = append(messages, *msg)
 				}
-			}
-
-			// Produce the batch of messages for the array field.
-			if len(messages) > 0 && updateSubTable {
-				if err := prod.CreateAndWriteTopic(ctx, topicName, messages); err != nil {
-					log.Fatalf("Error producing batch for field %s: %v", field, err)
+				for _, item := range diff.RemovedItems {
+					compositeID := fmt.Sprintf("%s_%v", parentID, utils.ToHashID(item))
+					messages = append(messages, utils.CreateTombstone(compositeID))
 				}
-				log.Printf("Successfully produced %d messages to topic %s", len(messages), topicName)
+			}
+		}
+
+		if len(messages) > 0 {
+			if err := prod.CreateAndWriteTopic(ctx, topic, messages); err != nil {
+				log.Printf("Failed to produce to %s: %v", topic, err)
+			} else {
+				log.Printf("Successfully produced %d messages to topic %s", len(messages), topic)
 			}
 		}
 	}
-	return basePayload, nil
 }
 
-func produceBaseMessage(doc map[string]interface{}, prod *producer.Producer, ctx context.Context, id string, outputTopic string) {
-	// Remove array fields from schema
-	if schema, ok := doc["schema"].(map[string]interface{}); ok {
-		if fields, ok := schema["fields"].([]interface{}); ok {
-			newFields := make([]interface{}, 0, len(fields))
-			for _, f := range fields {
-				if fieldMap, ok := f.(map[string]interface{}); ok {
-					if fieldType, ok := fieldMap["type"].(string); ok && fieldType == "array" {
-						continue
-					}
-				}
-				newFields = append(newFields, f)
-			}
-			schema["fields"] = newFields
-		}
-	}
-
-	// Marshal and produce
-	valueBytes, err := json.Marshal(doc)
-	if err != nil {
-		log.Printf("Error marshalling value: %v", err)
-		return
-	}
-
-	keyBytes, err := json.Marshal(id)
-	if err != nil {
-		log.Printf("Error marshalling value: %v", err)
-		return
-	}
-
-	baseMsg := kafka.Message{
-		Key:   keyBytes,
-		Value: valueBytes,
-	}
-
+func produceBaseMessage(prod *producer.Producer, ctx context.Context, id string, outputTopic string, topLevel []string, payload map[string]interface{}) {
 	transformedOutputTopic := utils.TransformTopicName(outputTopic)
 
-	if err := prod.CreateAndWriteTopic(ctx, transformedOutputTopic, []kafka.Message{baseMsg}); err != nil {
+	msg, err := utils.BuildKafkaMessage(transformedOutputTopic, id, payload, topLevel)
+	if err != nil {
+		log.Printf("Error building Kafka message for id %s: %v", id, err)
+		return
+	}
+
+	if err := prod.CreateAndWriteTopic(ctx, transformedOutputTopic, []kafka.Message{*msg}); err != nil {
 		log.Printf("Error producing base message: %v", err)
 		return
 	}
-	log.Printf("Produced id: %s base message to %s", id, transformedOutputTopic)
 }

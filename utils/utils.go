@@ -1,13 +1,10 @@
 package utils
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"kafka-go/service/producer"
-	"log"
 	"os"
 	"reflect"
 	"strings"
@@ -18,8 +15,9 @@ import (
 
 type FieldMappings struct {
 	Topics []struct {
-		Name          string   `yaml:"name"`
-		IncludeFields []string `yaml:"include_fields"`
+		Name                     string   `yaml:"name"`
+		IncludeFields            []string `yaml:"include_fields"`
+		array_obj_include_fields []string `yaml:"array_obj_include_fields"`
 	} `yaml:"topics"`
 }
 
@@ -106,33 +104,37 @@ func buildSchema(newMsg map[string]interface{}) []SchemaField {
 	return fields
 }
 
-func BuildKafkaMessage(topicName string, id string, payload map[string]interface{}) (*kafka.Message, error) {
+func BuildKafkaMessage(topicName string, id string, payload map[string]interface{}, allowed []string) (*kafka.Message, error) {
 	flattenedPayload := FlattenMap(payload, "", "_")
-	keyBytes, err := json.Marshal(id)
-	if err != nil {
-		return nil, fmt.Errorf("error marshalling key: %w", err)
+	cleanedPayload := make(map[string]interface{}, len(allowed))
+	for _, key := range allowed {
+		if val, exists := flattenedPayload[key]; exists && val != nil {
+			cleanedPayload[key] = val
+		}
 	}
 
-	schemaFields := buildSchema(flattenedPayload)
-	valueWrapper := map[string]interface{}{
-		"schema": map[string]interface{}{
-			"type":   "struct",
-			"fields": schemaFields,
-		},
-		"payload": payload,
+	schemaSection := map[string]interface{}{
+		"type":   "struct",
+		"fields": buildSchema(cleanedPayload),
 	}
 
-	valueBytes, err := json.Marshal(valueWrapper)
+	CleanSchema(schemaSection, allowed)
+
+	envelope := map[string]interface{}{
+		"schema":  schemaSection,
+		"payload": cleanedPayload,
+	}
+
+	valueBytes, err := json.Marshal(envelope)
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling value: %w", err)
 	}
 
 	msg := kafka.Message{
-		Key:   keyBytes,
+		Key:   []byte(id),
 		Value: valueBytes,
 	}
 
-	log.Printf("✔️ Prepared Kafka message for topic %s:\nKey: %s\nValue: %.300s...\n", topicName, keyBytes, valueBytes)
 	return &msg, nil
 }
 
@@ -188,36 +190,9 @@ func FlattenMap(input map[string]interface{}, parentKey string, delimiter string
 	return output
 }
 
-func CleanPayload(data map[string]interface{}, includeFields []string) {
-	allowed := buildFlatSet(includeFields)
-	cleanTopLevelOnly(data, allowed)
-}
-
-func buildFlatSet(fields []string) map[string]struct{} {
-	set := make(map[string]struct{})
-	for _, f := range fields {
-		// Only keep the top-level field (before the first dot)
-		topLevel := strings.SplitN(f, ".", 2)[0]
-		set[topLevel] = struct{}{}
-	}
-	return set
-}
-
-func cleanTopLevelOnly(data map[string]interface{}, allowedFields map[string]struct{}) {
-	if data == nil {
-		return
-	}
-
-	for key := range data {
-		if _, keep := allowedFields[key]; !keep {
-			delete(data, key)
-		}
-	}
-}
-
-func contains(slice []string, item string) bool {
+func Contains(slice []string, target string) bool {
 	for _, s := range slice {
-		if s == item {
+		if s == target {
 			return true
 		}
 	}
@@ -330,21 +305,25 @@ func primitiveDifference(a, b []interface{}) []interface{} {
 }
 
 func CleanSchema(schema map[string]interface{}, includeFields []string) {
-	fields, ok := schema["fields"].([]interface{})
+	rawFields, ok := schema["fields"].([]SchemaField)
 	if !ok {
 		return
 	}
 
-	filtered := make([]interface{}, 0)
-	for _, f := range fields {
-		field, ok := f.(map[string]interface{})
-		if !ok {
+	filtered := make([]SchemaField, 0, len(rawFields))
+	for _, field := range rawFields {
+		// Keep only whitelisted fields
+		if !Contains(includeFields, field.Field) {
 			continue
 		}
-		if fieldName, exists := field["field"].(string); exists && contains(includeFields, fieldName) {
-			filtered = append(filtered, field)
+		// Skip array types
+		if field.Type == "array" {
+			continue
 		}
+		filtered = append(filtered, field)
 	}
+
+	// Assign filtered slice back
 	schema["fields"] = filtered
 }
 
@@ -392,75 +371,6 @@ func flattenWrapper(m map[string]interface{}, wrapperKey string) map[string]inte
 	return m
 }
 
-func ProcessArrayDiffs(diffResults []DiffResult, parentID string, prod *producer.Producer, ctx context.Context, outputTopic string) {
-	for _, diff := range diffResults {
-		topic := TransformTopicName(fmt.Sprintf("%s_%v", outputTopic, diff.ArrayName))
-		var messages []kafka.Message
-
-		if diff.IsObjectArray {
-			for _, item := range diff.RemovedItems {
-				if obj, ok := item.(map[string]interface{}); ok {
-					if id, exists := obj["id"]; exists {
-						compositeID := fmt.Sprintf("%s_%v", parentID, id)
-						messages = append(messages, CreateTombstone(compositeID))
-					}
-				}
-			}
-			for _, item := range diff.AddedItems {
-				if obj, ok := item.(map[string]interface{}); ok {
-					if id, exists := obj["id"]; exists {
-						compositeID := fmt.Sprintf("%s_%v", parentID, id)
-						msgPayload := map[string]interface{}{
-							"_id":       compositeID, // Composite primary key
-							"parent_id": parentID,    // Explicit parent reference
-						}
-
-						// Merge all fields from the object
-						for key, value := range obj {
-							msgPayload[key] = value
-						}
-						msgPayload = FlattenMap(msgPayload, "", "_")
-						msg, err := BuildKafkaMessage(topic, compositeID, msgPayload)
-						if err != nil {
-							log.Printf("Error creating message: %v", err)
-							continue
-						}
-						messages = append(messages, *msg)
-					}
-				}
-			}
-		} else {
-			for _, item := range diff.AddedItems {
-				compositeID := fmt.Sprintf("%s_%v", parentID, ToHashID(item))
-				msgPayload := map[string]interface{}{
-					"_id":       compositeID,
-					"parent_id": parentID,
-					"value":     item,
-				}
-
-				msg, err := BuildKafkaMessage(topic, compositeID, msgPayload)
-				if err != nil {
-					log.Printf("Error creating message: %v", err)
-					continue
-				}
-				messages = append(messages, *msg)
-			}
-			for _, item := range diff.RemovedItems {
-				compositeID := fmt.Sprintf("%s_%v", parentID, ToHashID(item))
-				messages = append(messages, CreateTombstone(compositeID))
-			}
-		}
-
-		if len(messages) > 0 {
-			if err := prod.CreateAndWriteTopic(ctx, topic, messages); err != nil {
-				log.Printf("Failed to produce to %s: %v", topic, err)
-			} else {
-				log.Printf("Successfully produced %d messages to topic %s", len(messages), topic)
-			}
-		}
-	}
-}
-
 func ToHashID(item interface{}) string {
 	itemStr := fmt.Sprintf("%v", item)
 	hash := sha256.Sum256([]byte(itemStr))
@@ -468,12 +378,8 @@ func ToHashID(item interface{}) string {
 }
 
 func CreateTombstone(compositeID string) kafka.Message {
-	keyBytes, err := json.Marshal(compositeID)
-	if err != nil {
-		log.Printf("error marshalling key: %v", err)
-	}
 	return kafka.Message{
-		Key:   keyBytes,
+		Key:   []byte(compositeID),
 		Value: nil,
 	}
 }
@@ -507,11 +413,27 @@ func LoadFieldMappings() error {
 	return nil
 }
 
-func GetIncludeFields(topicName string) []string {
+func GetIncludeFields(topicName string) ([]string, map[string][]string) {
+	var topLevel []string
+	nestedInclude := make(map[string][]string)
+
 	for _, topic := range fieldMappings.Topics {
-		if topic.Name == topicName {
-			return topic.IncludeFields
+		if topic.Name != topicName {
+			continue
 		}
+		for _, f := range topic.IncludeFields {
+			if !strings.Contains(f, ".") {
+				// top-level field
+				topLevel = append(topLevel, f)
+			} else {
+				// nested field in dot-notation: "route.id"
+				parts := strings.SplitN(f, ".", 2)
+				arrayName, fieldName := parts[0], parts[1]
+				nestedInclude[arrayName] = append(nestedInclude[arrayName], fieldName)
+			}
+		}
+		return topLevel, nestedInclude
 	}
-	return nil
+
+	return topLevel, nestedInclude
 }

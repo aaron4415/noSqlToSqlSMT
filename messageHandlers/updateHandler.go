@@ -7,21 +7,15 @@ import (
 	"log"
 )
 
-func handleUpdate(doc map[string]interface{}, payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string) {
-	includeFields := utils.GetIncludeFields(outputTopic)
+func handleUpdateOrInsert(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string) {
+	topLevel, nested := utils.GetIncludeFields(outputTopic)
 	before, after, err := utils.GetBeforeAfter(payload)
 	if err != nil {
 		log.Printf("Error getting before/after: %v", err)
 		return
 	} else {
-		utils.CleanPayload(before, includeFields)
-		utils.CleanPayload(after, includeFields)
-	}
-
-	processedPayload, err := processPayload(payload, prod, ctx, parentID, outputTopic, false)
-	if err != nil {
-		log.Printf("Error processing payload: %v", err)
-		return
+		delete(payload, "__before")
+		delete(payload, "__after")
 	}
 
 	diffResults, err := utils.ComputeArrayDiffs(before, after, true)
@@ -30,13 +24,7 @@ func handleUpdate(doc map[string]interface{}, payload map[string]interface{}, pr
 		return
 	}
 
-	utils.ProcessArrayDiffs(diffResults, parentID, prod, ctx, outputTopic)
+	ProcessArrayDiffs(diffResults, parentID, prod, ctx, outputTopic, topLevel, nested)
 
-	doc["payload"] = processedPayload
-	if schema, ok := doc["schema"].(map[string]interface{}); ok {
-		utils.CleanSchema(schema, includeFields)
-	} else {
-		log.Printf("schema is not a map or is nil")
-	}
-	produceBaseMessage(doc, prod, ctx, parentID, outputTopic)
+	produceBaseMessage(prod, ctx, parentID, outputTopic, topLevel, payload)
 }

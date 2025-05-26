@@ -10,8 +10,9 @@ import (
 )
 
 func HandleDelete(payload map[string]interface{}, prod *producer.Producer, ctx context.Context, parentID string, outputTopic string) {
+	topLevel, nested := utils.GetIncludeFields(outputTopic)
 	transformedOutputTopic := utils.TransformTopicName(outputTopic)
-	includeFields := utils.GetIncludeFields(outputTopic)
+
 	if err := prod.CreateAndWriteTopic(ctx, transformedOutputTopic, []kafka.Message{utils.CreateTombstone(parentID)}); err != nil {
 		log.Fatalf("Error producing base message: %v", err)
 	} else {
@@ -21,9 +22,6 @@ func HandleDelete(payload map[string]interface{}, prod *producer.Producer, ctx c
 	if err != nil {
 		log.Printf("Error getting before/after: %v", err)
 		return
-	} else {
-		utils.CleanPayload(before, includeFields)
-		utils.CleanPayload(after, includeFields)
 	}
 
 	diffResults, err := utils.ComputeArrayDiffs(before, after, false)
@@ -31,5 +29,5 @@ func HandleDelete(payload map[string]interface{}, prod *producer.Producer, ctx c
 		log.Printf("Error Compute Array Diffs: %v", err)
 		return
 	}
-	utils.ProcessArrayDiffs(diffResults, parentID, prod, ctx, outputTopic)
+	ProcessArrayDiffs(diffResults, parentID, prod, ctx, outputTopic, topLevel, nested)
 }
