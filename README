@@ -1,4 +1,4 @@
-Use Case: Syncing MongoDB (NoSQL) to Oracle 10g (SQL) via Debezium
+Use Case: Syncing MongoDB (NoSQL) to Oracle 10g (SQL) via Debezium by kafka
 
 Objective
 Continuously capture data changes from a MongoDB source and apply them to an Oracle 10g sink using Kafka Connect and Debezium. Exclude unwanted fields and handle nested documents and arrays gracefully.
@@ -180,7 +180,7 @@ Choose the Go SMT when you need fine‑grained control over complex document sch
 
 
 The SMT logic:
-
+![alt text](https://github.com/aaron4415/noSqlToSqlSMT/blob/main/go_smt.png)
 
 Kafka & Connector Deployment Guide
 
