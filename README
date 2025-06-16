@@ -140,8 +140,7 @@ That should give you a clear, step‑by‑step guide to configuring Debezium for
 
 there is the custom SMTs structure:
 
-![alt text](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/go_smt.png)
-<img src="https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/go_smt.png" alt="System diagram" width="400">
+![image](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/go_smt.png)
 
 5. Custom Go SMT: Pros & Cons
 
@@ -181,8 +180,7 @@ Choose the Go SMT when you need fine‑grained control over complex document sch
 
 
 The SMT logic:
-![alt text](https://github.com/aaron4415/noSqlToSqlSMT/blob/main/smt_flow.png)
-<img src="https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/smt_flow.png" alt="System diagram" width="400">
+![image](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/smt_flow.png)
 
 Kafka & Connector Deployment Guide
 
