@@ -140,7 +140,7 @@ That should give you a clear, step‑by‑step guide to configuring Debezium for
 
 there is the custom SMTs structure:
 
-https://github.com/aaron4415/noSqlToSqlSMT/blob/main/go_smt.png
+![alt text](https://github.com/aaron4415/noSqlToSqlSMT/blob/main/go_smt.png)
 
 5. Custom Go SMT: Pros & Cons
 
