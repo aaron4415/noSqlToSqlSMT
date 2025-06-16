@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"strings"
 
 	"kafka-go/messageHandlers"
@@ -11,7 +10,6 @@ import (
 	"kafka-go/service/producer"
 	"kafka-go/utils"
 
-	"github.com/joho/godotenv"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -23,13 +21,9 @@ func init() {
 
 func main() {
 	log.Printf("SMT Start running")
-	// Load .env
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
-	}
 
-	brokers := strings.Split(os.Getenv("BROKERS"), ",")
-	inputTopics := strings.Split(os.Getenv("INPUT_TOPICS"), ",")
+	brokers := strings.Split(utils.GetEnv("BROKERS", "defaultKafkaPort:9098"), ",")
+	inputTopics := strings.Split(utils.GetEnv("INPUT_TOPICS", "defaultTopic"), ",")
 
 	if len(inputTopics) == 0 || inputTopics[0] == "" {
 		log.Fatal("INPUT_TOPICS environment variable is not set or is empty")

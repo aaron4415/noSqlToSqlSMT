@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/segmentio/kafka-go"
 	"gopkg.in/yaml.v3"
 )
@@ -36,59 +38,63 @@ type DiffResult struct {
 	AddedItems    []interface{}
 }
 
-func TransformTopicName(input string) string {
-	const streamPrefix = "mongo.data-hub-stream."
-	const sourcePrefix = "mongo.data-hub-source."
-	const maxLen = 30
-	var trimmed string
-
-	// Step 1: Replace prefix with "MDHS_"
-	if strings.HasPrefix(input, streamPrefix) {
-		trimmed = strings.TrimPrefix(input, streamPrefix)
-	} else if strings.HasPrefix(input, sourcePrefix) {
-		trimmed = strings.TrimPrefix(input, sourcePrefix)
+func GetEnv(key string, fallback string) string {
+	if err := godotenv.Load(); err != nil {
+		return fallback
 	}
-	normalized := strings.NewReplacer(".", "_", "-", "_").Replace(trimmed)
+	return os.Getenv(key)
+}
 
-	// Step 2: Split into parts
-	parts := strings.Split(normalized, "_")
-
-	// Remove empty strings caused by consecutive separators
-	cleanParts := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part != "" {
-			cleanParts = append(cleanParts, part)
+func TransformTopicName(input string) string {
+	topicPrefixes := strings.Split(GetEnv("TOPIC_PREFIXES", "mongo.data-hub-stream.,mongo.data-hub-source."), ",")
+	outputPrefix := GetEnv("OUTPUT_PREFIX", "MDHS_")
+	rawMax := GetEnv("MAX_LEN", "30")
+	maxLen, err := strconv.Atoi(rawMax)
+	if err != nil {
+		maxLen = 30
+	}
+	trimmed := input
+	// Step 1: remove any of the configured prefixes
+	for _, p := range topicPrefixes {
+		if strings.HasPrefix(input, p) {
+			trimmed = strings.TrimPrefix(input, p)
+			break
 		}
 	}
 
-	// Step 3: Capitalize all parts
-	for i := range cleanParts {
-		cleanParts[i] = strings.ToUpper(cleanParts[i])
+	// normalize separators to underscores
+	normalized := strings.NewReplacer(".", "_", "-", "_").Replace(trimmed)
+
+	// split and clean parts
+	parts := strings.FieldsFunc(normalized, func(r rune) bool {
+		return r == '_'
+	})
+
+	// uppercase each part
+	for i, part := range parts {
+		parts[i] = strings.ToUpper(part)
 	}
 
-	// Step 4: Assemble full name and check length
-	fullName := "MDHS_" + strings.Join(cleanParts, "_")
+	// assemble and enforce length
+	fullName := outputPrefix + strings.Join(parts, "_")
 	if len(fullName) <= maxLen {
 		return fullName
 	}
 
-	// Step 5: If too long, shorten each part to 3 characters
-	shortenedParts := make([]string, 0, len(cleanParts))
-	for _, part := range cleanParts {
+	// shorten each part to first 3 chars
+	for i, part := range parts {
 		if len(part) > 3 {
-			shortenedParts = append(shortenedParts, part[:3])
-		} else {
-			shortenedParts = append(shortenedParts, part)
+			parts[i] = part[:3]
 		}
 	}
 
-	shortenedName := "MDHS_" + strings.Join(shortenedParts, "_")
-	if len(shortenedName) > maxLen {
-		// Optional: truncate result to maxLen if still too long
-		return shortenedName[:maxLen]
+	shortName := outputPrefix + strings.Join(parts, "_")
+	if len(shortName) <= maxLen {
+		return shortName
 	}
 
-	return shortenedName
+	// final truncation
+	return shortName[:maxLen]
 }
 
 func buildSchema(newMsg map[string]interface{}) []SchemaField {

@@ -7,6 +7,8 @@ import (
 
 	"crypto/tls"
 
+	"kafka-go/utils"
+
 	"github.com/segmentio/kafka-go"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -30,7 +32,7 @@ func NewConsumer(brokers []string, topic string) *Consumer {
 		Reader: kafka.NewReader(kafka.ReaderConfig{
 			Brokers:     brokers,
 			Topic:       topic,
-			GroupID:     "my-app-consumer-10",
+			GroupID:     utils.GetEnv("GroupID", "my-app-consumer-10"),
 			MaxBytes:    10e6, // 10MB
 			StartOffset: kafka.FirstOffset,
 			Dialer: &kafka.Dialer{
