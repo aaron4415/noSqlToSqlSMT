@@ -178,7 +178,7 @@ Choose the Go SMT when you need fine‑grained control over complex document sch
 
 
 The SMT logic:
-![image](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/smt_flow_2.png)
+![image](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/smt_flow_3.png)
 
 Kafka & Connector Deployment Guide
 
