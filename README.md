@@ -1,68 +1,68 @@
-
-Use Case: Syncing MongoDB (NoSQL) to Oracle 10g (SQL) via Debezium by kafka
-
+MongoDB to Oracle 10g Sync via Kafka & Debezium
 Objective
-Continuously capture data changes from a MongoDB source and apply them to an Oracle 10g sink using Kafka Connect and Debezium. Exclude unwanted fields and handle nested documents and arrays gracefully.
+Continuously capture data changes from MongoDB and apply them to Oracle 10g using Kafka Connect and Debezium. This includes:
+
+Excluding unwanted fields
+
+Flattening nested documents and arrays
+
+Preserving change event semantics
 
 1. Challenges
+🔁 Data Model Mismatch
+MongoDB: Document-oriented (nested objects, arrays)
 
-Data Model Mismatch
+Oracle: Relational schema (fixed columns)
 
-MongoDB uses a flexible, document‑oriented structure (nested objects, arrays).
+🧹 Field Exclusion
+Use field.exclude.list in connector config.
 
-Oracle uses a fixed relational schema with tables and columns.
+🧩 Handling Nested Objects & Arrays
+Flatten nested documents
 
-Field Exclusion
+Normalize or flatten arrays
 
-Excluding specific fields (field.exclude.list) in the connector config.
+2. Debezium MongoDB Source Connector
+A. Field Exclusion
+properties
 
-Handling Nested Objects & Arrays
-
-Flattening nested documents into individual columns.
-
-Flattening or normalizing arrays into tabular form.
-
-2. Connector Configuration Options
-
-A. Debezium MongoDB Source Connector
-
-1. Excluding Fields
-
-field.exclude.list = database.collection.field1,database.collection.field2
-
-2. Extracting & Flattening Documents
+field.exclude.list=database.collection.field1,database.collection.field2
+B. Extract & Flatten Documents
+properties
 
 transforms=unwrap
 transforms.unwrap.type=io.debezium.connector.mongodb.transforms.ExtractNewDocumentState
-# Flatten nested objects into columns
 transforms.unwrap.flatten.struct=true
 transforms.unwrap.flatten.struct.delimiter=_
+Example
 
-Example:
+Original:
 
-// Original document:
+json
+
 {
   "_id": 1,
-  "a": {"b": 1, "c": [1,2,3]},
+  "a": {"b": 1, "c": [1, 2, 3]},
   "d": 100
 }
-// After flatten:
+Flattened:
+
+json
+
 {
   "_id": 1,
   "a_b": 1,
-  "a_c": [1,2,3],
+  "a_c": [1, 2, 3],
   "d": 100
 }
-
-3. Handling Arrays
-
+C. Handling Arrays
 Option 1: array.encoding=document
+properties
 
-transforms.unwrap.flatten.struct=true
-transforms.unwrap.flatten.struct.delimiter=_
 transforms.unwrap.array.encoding=document
+Example Output:
 
-Flattened Result:
+json
 
 {
   "_id": 1,
@@ -71,16 +71,15 @@ Flattened Result:
   "a1_1_a": "c",
   "a1_1_d": "something"
 }
-
-Drawback: Becomes unwieldy if arrays have many elements.
+Drawback: Not suitable for large arrays.
 
 Option 2: Change‑Stream Normalization
-
 Emit each array element as a separate Kafka record and load into its own Oracle table.
 
 Requires additional sink transformations or separate connectors per array field.
 
-Option 3: Custom SMT / Connector
+Option 3: Custom SMT in Go
+Emits individual row events for array elements
 
 Write a Go‑based SMT (avoiding Java) to transform arrays or nested docs into row‑based events.
 
@@ -93,53 +92,79 @@ transforms.unwrap.delete.handling.mode=rewrite
 
 Compare before and after states to add/remove array elements in Oracle.
 
+Keeps Oracle schema clean
+
 3. Recommended Approach
-
-Start Simple:
-
+✅ Start Simple
 If your data has no arrays or only flat documents, use Debezium’s built‑in ExtractNewDocumentState and flatten.struct.
 
-Introduce Array Handling:
+📦 Array Handling
+Small arrays → array.encoding=document
 
-For small arrays, use array.encoding=document + flattening.
+Large arrays → Normalize via custom SMT or change stream per array
 
-For large or complex arrays, normalize via change streams into separate Kafka topics.
+⚙️ Custom Go SMT
+Custom Go SMT (Schema Mapping Transform) benefits:
 
-Custom SMT for Complex Cases:
+Recursive flattening of nested objects/arrays
 
-Build a Go‑based SMT that:
+Selective field mapping via field_mappings.yaml
 
-Reads before/after change events.
+Business logic (lookups, enrichments, filters)
 
-Emits individual row operations for nested arrays.
+Dynamic collection support
 
-Keeps Oracle schema clean and navigable.
+4. Connector Configurations
+MongoDB Source Connector
+json
 
-4. Example Connector Properties
+{
+  "connector.class": "io.debezium.connector.mongodb.MongoDbConnector",
+  "mongodb.connection.string": "mongodb://user:pass@host:27017/?replicaSet=rs0",
+  "database.include.list": "data-hub-stream,data-hub-source",
+  "collection.include.list": "data-hub-stream.community_facility,data-hub-stream.bus",
+  "topic.prefix": "mongo",
+  "field.exclude.list": "orders.customField,users.internalNotes",
 
-mongodb.hosts=rs0/host1:27017,host2:27017
-mongodb.user=debezium
-mongodb.password=secret
-topic.prefix=${OUTPUT_PREFIX}
-field.exclude.list=orders.customField,users.internalNotes
+  "transforms": "unwrap",
+  "transforms.unwrap.type": "io.debezium.connector.mongodb.transforms.ExtractNewDocumentState",
+  "transforms.unwrap.flatten.struct": "true",
+  "transforms.unwrap.flatten.struct.delimiter": "_",
+  "transforms.unwrap.array.encoding": "document",
+  "transforms.unwrap.add.fields": "op,before,after",
+  "transforms.unwrap.delete.handling.mode": "rewrite",
 
-transforms=unwrap
-transforms.unwrap.type=io.debezium.connector.mongodb.transforms.ExtractNewDocumentState
-transforms.unwrap.flatten.struct=true
-transforms.unwrap.flatten.struct.delimiter=_
-transforms.unwrap.array.encoding=document
+  "capture.mode": "change_streams_update_full_with_pre_image",
+  "snapshot.mode": "when_needed",
+  "snapshot.fetch.size": "1024",
 
-capture.mode=change_streams_update_full_with_pre_image
-snapshot.mode=when_needed
-transforms.unwrap.add.fields=op,before,after
-transforms.unwrap.delete.handling.mode=rewrite
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "true"
+}
+Oracle Sink Connector
+json
 
-That should give you a clear, step‑by‑step guide to configuring Debezium for MongoDB→Oracle. Feel free to adjust the array strategy or introduce custom SMTs as your data complexity grows.
+{
+  "name": "oracle-sink",
+  "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+  "topics.regex": "mongo.*",
+  "dialect.name": "OracleDatabaseDialect",
+  "connection.url": "jdbc:oracle:thin:@//host:1521/ORCL",
+  "connection.user": "dbuser",
+  "connection.password": "dbpass",
 
+  "auto.create": "true",
+  "auto.evolve": "true",
+  "insert.mode": "upsert",
+  "pk.mode": "record_key",
+  "pk.fields": "_id",
+  "delete.enabled": "true",
 
-there is the custom SMTs structure:
-
-![image](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/go_smt.png)
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "true",
+  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+  "key.converter.schemas.enable": "false"
+}
 
 5. Custom Go SMT: Pros & Cons
 
@@ -176,156 +201,81 @@ Custom SMT code requires thorough unit tests, integration tests, and maintenance
 
 Choose the Go SMT when you need fine‑grained control over complex document schemas; for simpler or low‑volume use cases, consider Debezium’s native SMTs to reduce operational burden.
 
+6. Kafka & Connector Deployment Guide
+🧱 Prerequisites
+Kafka (MSK or self-managed)
 
+MongoDB with replica set
 
-The SMT logic:
-![image](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/smt_flow_2.png)
+Oracle 10g with JDBC access
 
-Kafka & Connector Deployment Guide
+Kafka Connect & CLI tools
 
-This guide walks through setting up your Kafka cluster, building and deploying the Go SMT, and configuring both MongoDB→Kafka source and Kafka→Oracle sink connectors.
+EC2 or VM to host Go SMT
 
-1. Prerequisites
+Go toolchain (v1.18+)
 
-Kafka Cluster: Provisioned MSK or self-managed Kafka brokers.
+Kafka Topic Operations
+bash
 
-MongoDB running with replica sets enabled (for change streams).
+# Set bootstrap server
+export BS=yourBootstrapServer:9098
 
-Oracle 10g accessible by JDBC.
+# List topics
+kafka-topics.sh --bootstrap-server $BS --command-config client.properties --list
 
-EC2 instance or VM to host the Go SMT service and Kafka Connect.
+# Create a topic
+kafka-topics.sh --bootstrap-server $BS --command-config client.properties \
+  --create --topic my-topic --partitions 1 --replication-factor 3
 
-Go toolchain installed (go1.18+).
+# Delete a topic
+kafka-topics.sh --bootstrap-server $BS --command-config client.properties \
+  --delete --topic my-topic
 
-Kafka CLI tools (kafka-topics.sh, kafka-console-consumer.sh, etc.).
-
-2. Kafka Cluster Setup
-
-2.1 AWS MSK IAM Policy
-
-Grant your IAM role permissions to connect, read/write topics and groups, and create/delete topics:
+# Consume messages
+kafka-console-consumer.sh --bootstrap-server $BS \
+  --consumer.config client.properties --topic my-topic --from-beginning \
+  --property print.key=true
+AWS MSK IAM Policy Example
+json
 
 {
-  "Version":"2012-10-17",
-  "Statement":[
+  "Version": "2012-10-17",
+  "Statement": [
     {
-      "Sid":"KafkaClusterConnect",
-      "Effect":"Allow",
-      "Action":["kafka-cluster:Connect"],
-      "Resource":["arn:aws:kafka:ap-southeast-1:ACCOUNT_ID:cluster/Provisioned-Cluster-1/*"]
+      "Sid": "KafkaClusterConnect",
+      "Effect": "Allow",
+      "Action": ["kafka-cluster:Connect"],
+      "Resource": ["arn:aws:kafka:ap-southeast-1:ACCOUNT_ID:cluster/Provisioned-Cluster-1/*"]
     },
     {
-      "Sid":"KafkaTopicAccess",
-      "Effect":"Allow",
-      "Action":[
+      "Sid": "KafkaTopicAccess",
+      "Effect": "Allow",
+      "Action": [
         "kafka-cluster:DescribeTopic",
         "kafka-cluster:ReadData",
         "kafka-cluster:WriteData",
         "kafka-cluster:CreateTopic",
         "kafka-cluster:DeleteTopic"
       ],
-      "Resource":["arn:aws:kafka:ap-southeast-1:ACCOUNT_ID:topic/Provisioned-Cluster-1/*"]
+      "Resource": ["arn:aws:kafka:ap-southeast-1:ACCOUNT_ID:topic/Provisioned-Cluster-1/*"]
     },
     {
-      "Sid":"KafkaGroupAccess",
-      "Effect":"Allow",
-      "Action":[
+      "Sid": "KafkaGroupAccess",
+      "Effect": "Allow",
+      "Action": [
         "kafka-cluster:AlterGroup",
         "kafka-cluster:DescribeGroup"
       ],
-      "Resource":["arn:aws:kafka:ap-southeast-1:ACCOUNT_ID:group/Provisioned-Cluster-1/*"]
+      "Resource": ["arn:aws:kafka:ap-southeast-1:ACCOUNT_ID:group/Provisioned-Cluster-1/*"]
     }
   ]
 }
 
-2.2 Basic Topic Operations
+7. Visuals
+SMT Architecture
+![image](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/go_smt.png)
 
-Set the bootstrap server address:
+SMT Processing Flow
+![image](https://raw.githubusercontent.com/aaron4415/noSqlToSqlSMT/main/smt_flow_2.png)
 
-export BS=yourBootstrapServer:9098
-
-List topics:
-
-kafka-topics.sh --bootstrap-server $BS --command-config client.properties --list
-
-Create a topic:
-
-kafka-topics.sh --bootstrap-server $BS --command-config client.properties \
-  --create --topic my-topic --partitions 1 --replication-factor 3
-
-Delete a single topic:
-
-kafka-topics.sh --bootstrap-server $BS --command-config client.properties \
-  --delete --topic my-topic
-
-Delete multiple topics:
-
-topics=(topic1 topic2 topic3)
-for t in "${topics[@]}"; do
-  kafka-topics.sh --bootstrap-server $BS --command-config client.properties \
-    --delete --topic "$t"
-done
-
-Read messages:
-
-kafka-console-consumer.sh --bootstrap-server $BS \
-  --consumer.config client.properties --topic my-topic --from-beginning \
-  --property print.key=true
-
-3. Build & Deploy Go SMT Service
-
-Clone the SMT repo on your host or EC2:
-
-4. Connector Configurations
-
-4.1 MongoDB Source Connector
-
-{
-  "name": "mongo-source-oracle",
-  "connector.class": "io.debezium.connector.mongodb.MongoDbConnector",
-  "mongodb.connection.string": "mongodb://user:pass@host:27017/?replicaSet=rs0",
-  "database.include.list": "data-hub-stream,data-hub-source",
-  "collection.include.list": "data-hub-stream.community_facility,data-hub-stream.bus,...",
-  "topic.prefix": "mongo",
-
-  "field.exclude.list": "db.coll.field1,db.coll.field2",
-
-  "transforms": "unwrap",
-  "transforms.unwrap.type": "io.debezium.connector.mongodb.transforms.ExtractNewDocumentState",
-  "transforms.unwrap.flatten.struct": "true",
-  "transforms.unwrap.flatten.struct.delimiter": "_",
-  "transforms.unwrap.array.encoding": "document",
-  "transforms.unwrap.drop.tombstones": "false",
-  "transforms.unwrap.add.fields": "op,before,after",
-
-  "capture.mode": "change_streams_update_full_with_pre_image",
-  "snapshot.mode": "when_needed",
-  "snapshot.fetch.size": "1024",
-
-  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-  "value.converter.schemas.enable": "true"
-}
-
-4.2 Oracle Sink Connector
-
-{
-  "name": "oracle-sink",
-  "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
-  "topics.regex": "mongo.*",
-  "dialect.name": "OracleDatabaseDialect",
-  "connection.url": "jdbc:oracle:thin:@//host:1521/ORCL",
-  "connection.user": "dbuser",
-  "connection.password": "dbpass",
-
-  "auto.create": "true",
-  "auto.evolve": "true",
-  "insert.mode": "upsert",
-  "pk.mode": "record_key",
-  "pk.fields": "_id",
-  "delete.enabled": "true",
-
-  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-  "value.converter.schemas.enable": "true",
-  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
-  "key.converter.schemas.enable": "false"
-}
