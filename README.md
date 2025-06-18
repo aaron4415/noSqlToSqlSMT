@@ -117,8 +117,6 @@ Keeps Oracle schema clean and navigable.
 
 4. Example Connector Properties
 
-name=mongo-source-oracle-sink
-connector.class=io.debezium.connector.mongodb.MongoDbConnector
 mongodb.hosts=rs0/host1:27017,host2:27017
 mongodb.user=debezium
 mongodb.password=secret
